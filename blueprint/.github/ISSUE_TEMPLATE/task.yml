@@ -1,0 +1,36 @@
+name: Task
+description: A bounded implementation or verification responsibility
+title: "[Task] "
+body:
+  - type: input
+    id: parent
+    attributes:
+      label: Capability / parent
+      description: Link the parent work item.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Required outcome
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and evidence
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Architecture, contracts and invariants
+      description: Link repository sources; do not copy normative text.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies, blockers and downstream consumers
+    validations:
+      required: true

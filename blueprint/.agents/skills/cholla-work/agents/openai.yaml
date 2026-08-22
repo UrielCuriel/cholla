@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cholla Work"
+  short_description: "Continúa trabajo de Habtus según perfil y milestone activo"
+  default_prompt: "Reconstruye el contexto con Cholla y continúa el siguiente trabajo listo para mi perfil."

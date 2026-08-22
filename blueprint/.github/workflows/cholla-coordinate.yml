@@ -1,0 +1,75 @@
+name: Cholla coordinator
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: cholla-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  lease-request:
+    if: contains(github.event.comment.body, '<!-- cholla:claim:v1 -->')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            const config = JSON.parse(fs.readFileSync('.cholla/project.json', 'utf8'))
+            const marker = '<!-- cholla:claim:v1 -->'
+            const body = context.payload.comment.body
+            const match = body.slice(body.indexOf(marker) + marker.length).match(/```json\s*([\s\S]*?)```/)
+            if (!match) return
+            const request = JSON.parse(match[1])
+            if (request.event !== 'lease-requested') return
+            const { owner, repo } = context.repo
+            const issue_number = context.issue.number
+            const actor = context.payload.comment.user.login
+            const profile = config.profiles[request.profile]
+            let authorized = Boolean(profile?.githubActors?.users?.includes(actor))
+            for (const team of profile?.githubActors?.teams ?? []) {
+              const [org, team_slug] = team.split('/')
+              if (!org || !team_slug) continue
+              try {
+                const membership = await github.rest.teams.getMembershipForUserInOrg({ org, team_slug, username: actor })
+                authorized ||= membership.data.state === 'active'
+              } catch (error) {
+                if (error.status !== 404) throw error
+              }
+            }
+            const permission = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: actor })
+            authorized &&= ['admin', 'maintain', 'write'].includes(permission.data.permission)
+            const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number })
+            const labels = issue.labels.map(label => typeof label === 'string' ? label : label.name)
+            const expectedProfile = `${config.github.labels.profilePrefix}${request.profile}`
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
+            const liveGrant = comments.some(comment => {
+              if (!comment.body?.includes('"event": "lease-granted"')) return false
+              const grantMatch = comment.body.match(/```json\s*([\s\S]*?)```/)
+              if (!grantMatch) return false
+              try { return new Date(JSON.parse(grantMatch[1]).expiresAt).getTime() > Date.now() } catch { return false }
+            })
+            const invalid = !authorized || !request.eventId || !request.sessionId || !labels.includes(config.github.labels.ready)
+              || !labels.includes(expectedProfile) || issue.assignees.length > 0 || liveGrant
+            if (invalid) {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body:
+                `${marker}\n\`\`\`json\n${JSON.stringify({ event: 'lease-denied', causationId: request.eventId, actor, reason: 'not-eligible' }, null, 2)}\n\`\`\`` })
+              return
+            }
+            const generation = comments.filter(comment => comment.body?.includes('"event": "lease-granted"')).length + 1
+            const expiresAt = new Date(Date.now() + config.policy.claimTtlHours * 60 * 60 * 1000).toISOString()
+            const grant = { event: 'lease-granted', eventId: crypto.randomUUID(), causationId: request.eventId,
+              actor, profile: request.profile, sessionId: request.sessionId, generation,
+              grantedAt: new Date().toISOString(), expiresAt }
+            await github.rest.issues.createComment({ owner, repo, issue_number, body:
+              `${marker}\n\`\`\`json\n${JSON.stringify(grant, null, 2)}\n\`\`\`` })
+            await github.rest.issues.update({ owner, repo, issue_number,
+              assignees: [actor],
+              labels: labels.filter(label => label !== config.github.labels.ready).concat(config.github.labels.inProgress) })

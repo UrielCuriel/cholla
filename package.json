@@ -1,0 +1,22 @@
+{
+  "name": "cholla",
+  "version": "0.1.0",
+  "module": "src/cli.ts",
+  "bin": {
+    "cholla": "src/cli.ts"
+  },
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "cholla": "bun run src/cli.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "check": "bun run typecheck && bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  }
+}

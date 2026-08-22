@@ -1,0 +1,34 @@
+name: Initiative or capability
+description: An outcome composed of smaller responsibilities
+title: "[Outcome] "
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Outcome and why it matters
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: In scope / out of scope
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance evidence
+    validations:
+      required: true
+  - type: textarea
+    id: architecture
+    attributes:
+      label: Authoritative product and architecture links
+    validations:
+      required: true
+  - type: textarea
+    id: decomposition
+    attributes:
+      label: Capabilities, tasks and dependencies
+    validations:
+      required: true

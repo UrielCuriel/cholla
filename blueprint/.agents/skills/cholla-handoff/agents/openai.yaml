@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cholla Handoff"
+  short_description: "Persiste coordinación entre perfiles"
+  default_prompt: "Registra el handoff o blocker de esta responsabilidad con Cholla."
