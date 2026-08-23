@@ -1,0 +1,11 @@
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 6
+
+[mcp_servers.github]
+url = "https://api.githubcopilot.com/mcp/"
+bearer_token_env_var = "GITHUB_PAT_TOKEN"
+required = true
+default_tools_approval_mode = "writes"
+startup_timeout_sec = 20
+tool_timeout_sec = 90

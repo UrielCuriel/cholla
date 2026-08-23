@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cholla Product Owner"
+  short_description: "Convierte intención de producto en trabajo coordinado"
+  default_prompt: "Reconstruye el contexto de producto y organiza esta iniciativa en GitHub antes de implementar."

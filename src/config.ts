@@ -2,12 +2,18 @@ import { resolve } from 'node:path';
 import type { ChollaConfig } from './types.ts';
 
 export const CONFIG_PATH = '.cholla/project.json';
+export const CONFIG_JSON5_PATH = '.cholla/project.json5';
 
 export async function loadConfig(repoRoot: string): Promise<ChollaConfig> {
   const path = resolve(repoRoot, CONFIG_PATH);
   const file = Bun.file(path);
-  if (!(await file.exists())) throw new Error(`Missing ${CONFIG_PATH} in ${repoRoot}`);
-  const config = (await file.json()) as ChollaConfig;
+  const json5File = Bun.file(resolve(repoRoot, CONFIG_JSON5_PATH));
+  if (!(await file.exists()) && !(await json5File.exists())) {
+    throw new Error(`Missing ${CONFIG_PATH} or ${CONFIG_JSON5_PATH} in ${repoRoot}`);
+  }
+  const config = await file.exists()
+    ? await file.json() as ChollaConfig
+    : Bun.JSON5.parse(await json5File.text()) as ChollaConfig;
   validateConfig(config);
   return config;
 }

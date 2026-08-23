@@ -134,6 +134,7 @@ export async function accept(
   profile: string,
   evidence: string,
   config: ChollaConfig,
+  sessionId: string,
 ): Promise<void> {
   if (config.policy.requireIndependentAcceptance) {
     if (!config.policy.acceptanceProfile || profile !== config.policy.acceptanceProfile) {
@@ -144,13 +145,18 @@ export async function accept(
     if (claims.some((claim) => claim.body.includes(`"profile": "${profile}"`))) {
       throw new Error('Independent acceptance cannot be performed by the implementing profile');
     }
-    const actor = await client.currentActor();
-    if (claims.some((claim) => claim.author?.login === actor)) {
-      throw new Error('Independent acceptance cannot be performed by the implementing actor');
+    if (claims.some((claim) => claim.body.includes(`"sessionId": "${sessionId}"`))) {
+      throw new Error('Independent acceptance requires a different Codex session from implementation');
+    }
+    if (config.policy.requireDistinctActor) {
+      const actor = await client.currentActor();
+      if (claims.some((claim) => claim.author?.login === actor)) {
+        throw new Error('Independent acceptance cannot be performed by the implementing actor');
+      }
     }
   }
   await client.comment(number, structuredComment(ACCEPTANCE_MARKER, {
-    profile, evidence, acceptedAt: new Date().toISOString(),
+    profile, sessionId, evidence, acceptedAt: new Date().toISOString(),
   }));
   await client.editLabels(number, [config.github.labels.accepted], [config.github.labels.inProgress]);
 }

@@ -1,0 +1,24 @@
+name: Capability
+description: Define a user-visible or architectural capability within an initiative
+title: "[Capability] "
+labels: ["type:feature", "status:ready"]
+body:
+  - type: textarea
+    id: outcome
+    attributes: { label: Outcome, description: What becomes possible and why it matters }
+    validations: { required: true }
+  - type: input
+    id: initiative
+    attributes: { label: Parent initiative, placeholder: "#123" }
+    validations: { required: true }
+  - type: textarea
+    id: acceptance
+    attributes: { label: Acceptance criteria }
+    validations: { required: true }
+  - type: textarea
+    id: constraints
+    attributes: { label: Contracts and invariants }
+  - type: textarea
+    id: evidence
+    attributes: { label: Required evidence }
+    validations: { required: true }

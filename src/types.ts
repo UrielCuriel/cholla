@@ -43,6 +43,7 @@ export type ChollaConfig = {
   policy: {
     acceptanceProfile?: string;
     requireIndependentAcceptance: boolean;
+    requireDistinctActor?: boolean;
     claimTtlHours: number;
   };
 };

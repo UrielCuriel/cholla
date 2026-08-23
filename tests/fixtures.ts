@@ -18,7 +18,7 @@ export const config: ChollaConfig = {
       priorityPrefix: 'priority:',
     },
   },
-  policy: { acceptanceProfile: 'quality', requireIndependentAcceptance: true, claimTtlHours: 1 },
+  policy: { acceptanceProfile: 'quality', requireIndependentAcceptance: true, requireDistinctActor: false, claimTtlHours: 1 },
 };
 
 export function issue(labels: string[] = ['s:ready', 'p:builder', 'priority:P1']): Issue {

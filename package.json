@@ -3,15 +3,21 @@
   "version": "0.1.0",
   "module": "src/cli.ts",
   "bin": {
-    "cholla": "src/cli.ts"
+    "cholla": "dist/cholla"
   },
   "type": "module",
   "private": true,
+  "engines": {
+    "bun": ">=1.4.0"
+  },
   "scripts": {
     "cholla": "bun run src/cli.ts",
+    "build": "bun build --compile --target=bun --no-compile-autoload-dotenv --asset ./blueprint --outfile dist/cholla src/cli.ts",
+    "link": "bun run build && bun link",
     "test": "bun test",
+    "test:bin": "dist/cholla help",
     "typecheck": "bunx tsc --noEmit",
-    "check": "bun run typecheck && bun test"
+    "check": "bun run typecheck && bun test && bun run build && bun run test:bin"
   },
   "devDependencies": {
     "@types/bun": "latest"

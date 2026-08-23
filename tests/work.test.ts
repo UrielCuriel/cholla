@@ -44,24 +44,24 @@ describe('leases', () => {
 describe('acceptance', () => {
   test('rejects a profile that is not the configured verifier', async () => {
     const fake = new FakeClient();
-    expect(accept(fake as unknown as GithubClient, 1, 'builder', 'tests', config))
+    expect(accept(fake as unknown as GithubClient, 1, 'builder', 'tests', config, 'qa-session'))
       .rejects.toThrow('Acceptance requires profile quality');
   });
 
   test('records acceptance by the authorized profile', async () => {
     const fake = new FakeClient();
-    await accept(fake as unknown as GithubClient, 1, 'quality', 'bun test', config);
+    await accept(fake as unknown as GithubClient, 1, 'quality', 'bun test', config, 'qa-session');
     expect(fake.comments[0]).toContain('cholla:acceptance:v1');
     expect(fake.edits).toHaveLength(1);
   });
 
-  test('rejects the same GitHub actor even under the verifier profile', async () => {
+  test('rejects the implementing session even under the verifier profile', async () => {
     const fake = new FakeClient();
     fake.current.comments = [{
-      body: '<!-- cholla:claim:v1 -->', createdAt: new Date().toISOString(), author: { login: 'quality' },
+      body: '<!-- cholla:claim:v1 -->\n```json\n{"sessionId": "same-session"}\n```', createdAt: new Date().toISOString(), author: { login: 'quality' },
     }];
-    expect(accept(fake as unknown as GithubClient, 1, 'quality', 'bun test', config))
-      .rejects.toThrow('implementing actor');
+    expect(accept(fake as unknown as GithubClient, 1, 'quality', 'bun test', config, 'same-session'))
+      .rejects.toThrow('different Codex session');
   });
 });
 
