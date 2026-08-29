@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test';
+import { resolve } from 'node:path';
 import type { GithubClient } from '../src/github.ts';
-import { accept, block, claim, selectNext } from '../src/work.ts';
+import {
+  accept,
+  acknowledgeHandoff,
+  block,
+  buildContext,
+  claim,
+  selectNext,
+} from '../src/work.ts';
 import { config, issue } from './fixtures.ts';
 
 class FakeClient {
@@ -8,13 +16,34 @@ class FakeClient {
   comments: string[] = [];
   edits: unknown[] = [];
   actor = 'quality';
+  failNextEdit = false;
   async issue(): Promise<ReturnType<typeof issue>> { return this.current; }
+  async activeMilestone(): Promise<{ number: number; title: string; state: string }> {
+    return { number: 1, title: 'M1', state: 'open' };
+  }
+  async issues(): Promise<ReturnType<typeof issue>[]> { return [this.current]; }
   async comment(_number: number, body: string): Promise<void> { this.comments.push(body); }
   async currentActor(): Promise<string> { return this.actor; }
   async editLabels(_number: number, add: string[], remove: string[]): Promise<void> {
+    if (this.failNextEdit) {
+      this.failNextEdit = false;
+      throw new Error('partial GitHub mutation');
+    }
     this.edits.push({ add, remove });
+    const names = new Set(this.current.labels.map(({ name }) => name));
+    for (const label of remove) names.delete(label);
+    for (const label of add) names.add(label);
+    this.current = { ...this.current, labels: [...names].map((name) => ({ name })) };
   }
 }
+
+const handoffBody = (to = 'builder') => `<!-- cholla:handoff:v1 -->
+\`\`\`json
+${JSON.stringify({
+  from: 'quality', to, type: 'implementation', context: 'context', impact: 'impact',
+  requiredAction: 'act', blockingCondition: 'none', evidence: 'evidence', relatedWork: '#1',
+}, null, 2)}
+\`\`\``;
 
 describe('eligibility', () => {
   test('orders eligible work by priority', () => {
@@ -38,6 +67,84 @@ describe('leases', () => {
     expect(fake.comments).toHaveLength(1);
     expect(fake.comments[0]).toContain('lease-requested');
     expect(fake.edits).toEqual([]);
+  });
+});
+
+describe('handoff acknowledgment', () => {
+  test('moves a valid ready handoff into eligible work without altering its event', async () => {
+    const fake = new FakeClient();
+    const original = handoffBody();
+    fake.current = issue(['s:ready', 'p:builder', 'handoff', 'priority:P1']);
+    fake.current.comments = [{ body: original, createdAt: new Date().toISOString(), author: { login: 'quality' } }];
+
+    await acknowledgeHandoff(fake as unknown as GithubClient, 1, 'builder', 'ready', config);
+
+    expect(fake.comments[0]).toContain('cholla:handoff-ack:v1');
+    expect(fake.comments[0]).toContain('handoff-acknowledged');
+    expect(fake.current.comments[0]?.body).toBe(original);
+    expect(fake.edits).toEqual([{ add: [], remove: ['handoff'] }]);
+    expect(selectNext([fake.current], 'builder', config)).toHaveLength(1);
+    const context = await buildContext(
+      resolve(import.meta.dir, '..'),
+      'builder',
+      config,
+      fake as unknown as GithubClient,
+    );
+    expect(context).toContain('Pending handoffs:\n- None');
+    expect(context).toContain('Eligible new work:\n- #1 Work');
+    await claim(fake as unknown as GithubClient, 1, 'builder', config, 'receiver-session');
+    expect(fake.comments.at(-1)).toContain('lease-requested');
+  });
+
+  test('rejects a profile other than the persisted receiver', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:ready', 'p:quality', 'handoff']);
+    fake.current.comments = [{ body: handoffBody('quality'), createdAt: new Date().toISOString(), author: null }];
+    expect(acknowledgeHandoff(fake as unknown as GithubClient, 1, 'builder', 'ready', config))
+      .rejects.toThrow('Handoff receiver is quality, not builder');
+  });
+
+  test('requires the explicit target state to already be persisted', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:blocked', 'p:builder', 'handoff']);
+    fake.current.comments = [{ body: handoffBody(), createdAt: new Date().toISOString(), author: null }];
+    expect(acknowledgeHandoff(fake as unknown as GithubClient, 1, 'builder', 'ready', config))
+      .rejects.toThrow('target state ready is not present');
+  });
+
+  test('rejects a historical handoff that is not pending or already acknowledged', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:ready', 'p:builder']);
+    fake.current.comments = [{ body: handoffBody(), createdAt: new Date().toISOString(), author: null }];
+    expect(acknowledgeHandoff(fake as unknown as GithubClient, 1, 'builder', 'ready', config))
+      .rejects.toThrow('no pending handoff');
+  });
+
+  test('preserves blocked work while acknowledging its handoff', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:blocked', 'p:builder', 'handoff']);
+    fake.current.comments = [{ body: handoffBody(), createdAt: new Date().toISOString(), author: null }];
+    await acknowledgeHandoff(fake as unknown as GithubClient, 1, 'builder', 'blocked', config);
+    expect(fake.current.labels.map(({ name }) => name)).toContain('s:blocked');
+    expect(selectNext([fake.current], 'builder', config)).toEqual([]);
+  });
+
+  test('is idempotent and repairs a partial comment-before-label mutation', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:ready', 'p:builder', 'handoff']);
+    fake.current.comments = [{ body: handoffBody(), createdAt: new Date().toISOString(), author: null }];
+    fake.failNextEdit = true;
+    await expect(acknowledgeHandoff(fake as unknown as GithubClient, 1, 'builder', 'ready', config))
+      .rejects.toThrow('partial GitHub mutation');
+    fake.current.comments!.push({
+      body: fake.comments[0]!, createdAt: new Date().toISOString(), author: { login: 'builder' },
+    });
+
+    await acknowledgeHandoff(fake as unknown as GithubClient, 1, 'builder', 'ready', config);
+    await acknowledgeHandoff(fake as unknown as GithubClient, 1, 'builder', 'ready', config);
+
+    expect(fake.comments).toHaveLength(1);
+    expect(fake.edits).toEqual([{ add: [], remove: ['handoff'] }]);
   });
 });
 
