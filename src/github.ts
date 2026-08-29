@@ -36,6 +36,13 @@ export class GithubClient {
     return output.trim();
   }
 
+  async actorInAnyTeam(actor: string, teams: string[]): Promise<boolean> {
+    for (const team of teams) {
+      if (await this.isTeamMember(team, actor)) return true;
+    }
+    return false;
+  }
+
   async milestones(): Promise<Milestone[]> {
     const output = await this.runner.run([
       'gh', 'api', `repos/${this.repository}/milestones?state=open&per_page=100`,
@@ -54,7 +61,7 @@ export class GithubClient {
 
   async issues(milestone?: string): Promise<Issue[]> {
     const args = ['issue', 'list', '--state', 'open', '--limit', '200',
-      '--json', 'number,title,url,body,labels,assignees,milestone,updatedAt'];
+      '--json', 'number,state,title,url,body,labels,assignees,milestone,updatedAt'];
     if (milestone) args.push('--milestone', milestone);
     const output = await this.gh(args);
     return JSON.parse(output) as Issue[];
@@ -63,7 +70,7 @@ export class GithubClient {
   async issue(number: number): Promise<Issue> {
     const output = await this.gh([
       'issue', 'view', String(number),
-      '--json', 'number,title,url,body,labels,assignees,milestone,updatedAt,comments',
+      '--json', 'number,state,title,url,body,labels,assignees,milestone,updatedAt,comments',
     ]);
     return JSON.parse(output) as Issue;
   }

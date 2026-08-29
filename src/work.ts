@@ -7,6 +7,7 @@ const HANDOFF_MARKER = '<!-- cholla:handoff:v1 -->';
 const HANDOFF_ACK_MARKER = '<!-- cholla:handoff-ack:v1 -->';
 const ACCEPTANCE_MARKER = '<!-- cholla:acceptance:v1 -->';
 const BLOCKER_MARKER = '<!-- cholla:blocker:v1 -->';
+const UNBLOCK_MARKER = '<!-- cholla:unblock:v1 -->';
 
 export function selectNext(issues: Issue[], profile: string, config: ChollaConfig): Issue[] {
   const priorities = config.github.taxonomy.priorities.map(
@@ -147,9 +148,8 @@ export async function handoff(
   if (!config.profiles[fields.to!]) throw new Error(`Unknown profile: ${fields.to}`);
   const actor = await client.currentActor();
   const authorizedByUser = sender.githubActors.users.includes(actor);
-  const authorizedByTeam = !authorizedByUser && await Promise.all(
-    sender.githubActors.teams.map((team) => client.isTeamMember(team, actor)),
-  ).then((memberships) => memberships.some(Boolean));
+  const authorizedByTeam = !authorizedByUser
+    && await client.actorInAnyTeam(actor, sender.githubActors.teams);
   if (!authorizedByUser && !authorizedByTeam) {
     throw new Error(`GitHub actor ${actor} is not authorized for profile ${fields.from}`);
   }
@@ -332,5 +332,198 @@ export async function block(
     number,
     [config.github.labels.blocked],
     [config.github.labels.ready, config.github.labels.inProgress],
+  );
+}
+
+type UnblockFields = {
+  profile: string;
+  sessionId: string;
+  resolution: string;
+  evidence: string;
+};
+
+type BlockerReference =
+  | { blockerDigest: string; legacyBlocked?: never }
+  | { blockerDigest?: never; legacyBlocked: true };
+
+function workflowStateLabels(config: ChollaConfig): string[] {
+  return [
+    config.github.labels.ready,
+    config.github.labels.inProgress,
+    config.github.labels.blocked,
+    config.github.labels.needsDecision,
+    config.github.labels.accepted,
+  ];
+}
+
+function assertUnblockIssue(
+  issue: Issue,
+  config: ChollaConfig,
+  options: { allowReadyRepair: boolean },
+): string {
+  if (issue.state !== 'OPEN') throw new Error(`Issue #${issue.number} is not open`);
+  if (issue.assignees.length) throw new Error(`Issue #${issue.number} has assigned or live-work residue`);
+  const latestLeaseEvent = [...(issue.comments ?? [])]
+    .reverse()
+    .map((comment) => structuredFields(comment.body, CLAIM_MARKER))
+    .find((fields) => typeof fields?.event === 'string' && fields.event.startsWith('lease-'));
+  if (latestLeaseEvent?.event === 'lease-granted'
+    && typeof latestLeaseEvent.expiresAt === 'string'
+    && Date.parse(latestLeaseEvent.expiresAt) > Date.now()) {
+    throw new Error(`Issue #${issue.number} has assigned or live-work residue`);
+  }
+
+  const labels = labelNames(issue);
+  const profileLabels = labels.filter((label) => label.startsWith(config.github.labels.profilePrefix));
+  if (profileLabels.length !== 1) {
+    throw new Error(`Issue #${issue.number} must have exactly one target profile`);
+  }
+  const targetProfile = profileLabels[0]!.slice(config.github.labels.profilePrefix.length);
+  if (!config.profiles[targetProfile]) throw new Error(`Unknown target profile: ${targetProfile}`);
+
+  if (labels.includes(config.github.labels.handoffRequired)) {
+    throw new Error(`Issue #${issue.number} has an unacknowledged handoff`);
+  }
+  if (labels.includes(config.github.labels.humanRequired)) {
+    throw new Error(`Issue #${issue.number} requires human action`);
+  }
+
+  const states = workflowStateLabels(config).filter((label) => labels.includes(label));
+  const validBlocked = states.length === 1 && states[0] === config.github.labels.blocked;
+  const validRepair = options.allowReadyRepair
+    && states.length >= 1
+    && states.every((label) => label === config.github.labels.blocked || label === config.github.labels.ready);
+  if (!validBlocked && !validRepair) {
+    throw new Error(`Issue #${issue.number} is not exclusively blocked or safely repairable`);
+  }
+  return targetProfile;
+}
+
+async function blockerReference(issue: Issue): Promise<BlockerReference> {
+  const blockerComment = [...(issue.comments ?? [])]
+    .reverse()
+    .find((comment) => comment.body.startsWith(BLOCKER_MARKER));
+  if (!blockerComment) return { legacyBlocked: true };
+  if (!structuredFields(blockerComment.body, BLOCKER_MARKER)) {
+    throw new Error(`Issue #${issue.number} has a malformed latest structured blocker`);
+  }
+  return { blockerDigest: await sha256(blockerComment.body) };
+}
+
+function sameBlocker(fields: Record<string, unknown>, blocker: BlockerReference): boolean {
+  return 'legacyBlocked' in blocker
+    ? fields.legacyBlocked === true && fields.blockerDigest === undefined
+    : fields.blockerDigest === blocker.blockerDigest && fields.legacyBlocked === undefined;
+}
+
+function sameResolution(
+  fields: Record<string, unknown>,
+  input: UnblockFields,
+  targetProfile: string,
+): boolean {
+  return fields.event === 'blocker-resolved'
+    && fields.resolverProfile === input.profile
+    && fields.targetProfile === targetProfile
+    && fields.sessionId === input.sessionId
+    && fields.resolution === input.resolution
+    && fields.evidence === input.evidence;
+}
+
+/**
+ * Record an explicit, evidenced blocked -> ready transition.
+ *
+ * The resolution event is persisted before the repairable label projection.
+ * A repeated invocation is bound to the same blocker digest and facts, while
+ * a newer blocker or conflicting attestation fails closed.
+ */
+export async function unblock(
+  client: GithubClient,
+  number: number,
+  input: UnblockFields,
+  config: ChollaConfig,
+): Promise<void> {
+  if (Object.values(input).some((field) => !field.trim())) {
+    throw new Error('Profile, session, resolution, and evidence are required');
+  }
+  const resolver = config.profiles[input.profile];
+  if (!resolver) throw new Error(`Unknown profile: ${input.profile}`);
+  const actor = await client.currentActor();
+  const authorized = resolver.githubActors.users.includes(actor)
+    || await client.actorInAnyTeam(actor, resolver.githubActors.teams);
+  if (!authorized) {
+    throw new Error(`GitHub actor ${actor} is not authorized for profile ${input.profile}`);
+  }
+
+  const before = await client.issue(number);
+  const beforeLabels = labelNames(before);
+  const existingResolutions = (before.comments ?? [])
+    .map((comment) => structuredFields(comment.body, UNBLOCK_MARKER))
+    .filter((fields): fields is Record<string, unknown> => fields !== undefined);
+
+  // A completed or partially applied retry is the only path allowed to start
+  // from ready. Its event supplies the immutable blocker binding.
+  const matchingByFacts = existingResolutions.filter((fields) =>
+    fields.issueNumber === number
+    && fields.resolverProfile === input.profile
+    && fields.sessionId === input.sessionId
+    && fields.resolution === input.resolution
+    && fields.evidence === input.evidence
+  );
+  const retry = matchingByFacts.at(-1);
+  const targetProfile = assertUnblockIssue(before, config, { allowReadyRepair: retry !== undefined });
+  const blocker = await blockerReference(before);
+
+  if (retry) {
+    if (!sameResolution(retry, input, targetProfile) || !sameBlocker(retry, blocker)) {
+      throw new Error(`Unblock request for issue #${number} is stale or conflicts with current state`);
+    }
+  }
+  const conflicting = existingResolutions.some((fields) =>
+    sameBlocker(fields, blocker) && !sameResolution(fields, input, targetProfile)
+  );
+  if (conflicting) throw new Error(`Blocker on issue #${number} already has conflicting resolution facts`);
+
+  if (retry && beforeLabels.includes(config.github.labels.ready)
+    && !beforeLabels.includes(config.github.labels.blocked)) return;
+
+  if (!retry) {
+    const eventId = crypto.randomUUID();
+    await client.comment(number, structuredComment(UNBLOCK_MARKER, {
+      event: 'blocker-resolved',
+      eventId,
+      correlationId: eventId,
+      issueNumber: number,
+      actor,
+      resolverProfile: input.profile,
+      targetProfile,
+      sessionId: input.sessionId,
+      resolution: input.resolution,
+      evidence: input.evidence,
+      ...blocker,
+      resolvedAt: new Date().toISOString(),
+    }));
+  }
+
+  const afterComment = await client.issue(number);
+  const afterTargetProfile = assertUnblockIssue(afterComment, config, { allowReadyRepair: true });
+  if (afterTargetProfile !== targetProfile) {
+    throw new Error(`Target profile changed while unblocking issue #${number}`);
+  }
+  const currentBlocker = await blockerReference(afterComment);
+  if (JSON.stringify(currentBlocker) !== JSON.stringify(blocker)) {
+    throw new Error(`A newer blocker superseded the unblock request for issue #${number}`);
+  }
+  const persisted = (afterComment.comments ?? [])
+    .map((comment) => structuredFields(comment.body, UNBLOCK_MARKER))
+    .filter((fields): fields is Record<string, unknown> => fields !== undefined)
+    .filter((fields) => sameResolution(fields, input, targetProfile) && sameBlocker(fields, blocker));
+  if (persisted.length !== 1) {
+    throw new Error(`Expected exactly one matching unblock event for issue #${number}`);
+  }
+
+  await client.editLabels(
+    number,
+    [config.github.labels.ready],
+    [config.github.labels.blocked],
   );
 }

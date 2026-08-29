@@ -13,6 +13,7 @@ import {
   claim,
   handoff,
   selectNext,
+  unblock,
 } from './work.ts';
 
 const repositoryRoot = () => option(z.string().default('.'), {
@@ -200,6 +201,25 @@ async function main(): Promise<void> {
       await block(client, flags.issue, {
         profile: flags.profile, condition: flags.condition, dependency: flags.dependency,
         evidence: flags.evidence, nextCheck: flags['next-check'],
+      }, config);
+    },
+  }));
+
+  cli.command(defineCommand({
+    name: 'unblock',
+    description: 'Record an evidenced blocker resolution and move blocked work to ready',
+    options: {
+      profile: profile(), issue: issue(), session: text('Codex session ID'),
+      resolution: text('Blocker resolution'), evidence: text('Supporting evidence'),
+      'repo-root': repositoryRoot(),
+    },
+    handler: async ({ flags }) => {
+      const { config, client } = await project(resolve(flags['repo-root']));
+      await unblock(client, flags.issue, {
+        profile: flags.profile,
+        sessionId: flags.session,
+        resolution: flags.resolution,
+        evidence: flags.evidence,
       }, config);
     },
   }));

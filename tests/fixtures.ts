@@ -23,7 +23,7 @@ export const config: ChollaConfig = {
 
 export function issue(labels: string[] = ['s:ready', 'p:builder', 'priority:P1']): Issue {
   return {
-    number: 1, title: 'Work', url: 'https://example.test/1', body: '',
+    number: 1, state: 'OPEN', title: 'Work', url: 'https://example.test/1', body: '',
     labels: labels.map((name) => ({ name })), assignees: [],
     milestone: { title: 'M1' }, updatedAt: new Date(0).toISOString(), comments: [],
   };
