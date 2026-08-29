@@ -143,11 +143,14 @@ export async function handoff(
   if (absent.length) throw new Error(`Missing handoff fields: ${absent.join(', ')}`);
   await client.comment(number, structuredComment(HANDOFF_MARKER, fields));
   const issue = await client.issue(number);
-  const profileLabels = labelNames(issue).filter((label) => label.startsWith(config.github.labels.profilePrefix));
+  const receiverProfileLabel = `${config.github.labels.profilePrefix}${fields.to}`;
+  const staleProfileLabels = labelNames(issue).filter(
+    (label) => label.startsWith(config.github.labels.profilePrefix) && label !== receiverProfileLabel,
+  );
   await client.editLabels(number, [
     config.github.labels.handoffRequired,
-    `${config.github.labels.profilePrefix}${fields.to}`,
-  ], profileLabels);
+    receiverProfileLabel,
+  ], staleProfileLabels);
 }
 
 export type HandoffTargetState = 'ready' | 'blocked' | 'needs-decision';

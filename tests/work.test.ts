@@ -7,6 +7,7 @@ import {
   block,
   buildContext,
   claim,
+  handoff,
   selectNext,
 } from '../src/work.ts';
 import { config, issue } from './fixtures.ts';
@@ -14,7 +15,7 @@ import { config, issue } from './fixtures.ts';
 class FakeClient {
   current = issue();
   comments: string[] = [];
-  edits: unknown[] = [];
+  edits: { add: string[]; remove: string[] }[] = [];
   actor = 'quality';
   failNextEdit = false;
   async issue(): Promise<ReturnType<typeof issue>> { return this.current; }
@@ -31,18 +32,20 @@ class FakeClient {
     }
     this.edits.push({ add, remove });
     const names = new Set(this.current.labels.map(({ name }) => name));
-    for (const label of remove) names.delete(label);
     for (const label of add) names.add(label);
+    for (const label of remove) names.delete(label);
     this.current = { ...this.current, labels: [...names].map((name) => ({ name })) };
   }
 }
 
-const handoffBody = (to = 'builder') => `<!-- cholla:handoff:v1 -->
-\`\`\`json
-${JSON.stringify({
+const handoffFields = (to = 'builder') => ({
   from: 'quality', to, type: 'implementation', context: 'context', impact: 'impact',
   requiredAction: 'act', blockingCondition: 'none', evidence: 'evidence', relatedWork: '#1',
-}, null, 2)}
+});
+
+const handoffBody = (to = 'builder') => `<!-- cholla:handoff:v1 -->
+\`\`\`json
+${JSON.stringify(handoffFields(to), null, 2)}
 \`\`\``;
 
 describe('eligibility', () => {
@@ -67,6 +70,66 @@ describe('leases', () => {
     expect(fake.comments).toHaveLength(1);
     expect(fake.comments[0]).toContain('lease-requested');
     expect(fake.edits).toEqual([]);
+  });
+});
+
+describe('handoff projection', () => {
+  test('preserves an existing receiver with disjoint label mutations', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:ready', 'p:builder', 'priority:P1']);
+
+    await handoff(fake as unknown as GithubClient, 1, handoffFields(), config);
+
+    expect(fake.comments[0]).toContain('cholla:handoff:v1');
+    expect(fake.edits).toEqual([{ add: ['handoff', 'p:builder'], remove: [] }]);
+    expect(fake.current.labels.map(({ name }) => name)).toEqual([
+      's:ready', 'p:builder', 'priority:P1', 'handoff',
+    ]);
+  });
+
+  test('replaces only stale profile labels and preserves unrelated state', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:blocked', 'p:quality', 'priority:P1']);
+
+    await handoff(fake as unknown as GithubClient, 1, handoffFields(), config);
+
+    expect(fake.edits).toEqual([{ add: ['handoff', 'p:builder'], remove: ['p:quality'] }]);
+    expect(fake.current.labels.map(({ name }) => name)).toEqual([
+      's:blocked', 'priority:P1', 'handoff', 'p:builder',
+    ]);
+  });
+
+  test('repairs multiple profile labels while retaining the receiver', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:ready', 'p:quality', 'p:builder', 'priority:P1']);
+
+    await handoff(fake as unknown as GithubClient, 1, handoffFields(), config);
+
+    expect(fake.edits).toEqual([{ add: ['handoff', 'p:builder'], remove: ['p:quality'] }]);
+    expect(fake.current.labels.filter(({ name }) => name.startsWith('p:')))
+      .toEqual([{ name: 'p:builder' }]);
+  });
+
+  test('converges on retry without ever removing the receiver', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:ready', 'p:builder', 'priority:P1']);
+    fake.failNextEdit = true;
+
+    await expect(handoff(fake as unknown as GithubClient, 1, handoffFields(), config))
+      .rejects.toThrow('partial GitHub mutation');
+    await handoff(fake as unknown as GithubClient, 1, handoffFields(), config);
+    await handoff(fake as unknown as GithubClient, 1, handoffFields(), config);
+
+    expect(fake.comments).toHaveLength(3);
+    expect(fake.edits).toEqual([
+      { add: ['handoff', 'p:builder'], remove: [] },
+      { add: ['handoff', 'p:builder'], remove: [] },
+    ]);
+    for (const edit of fake.edits) {
+      expect(edit.add.filter((label) => edit.remove.includes(label))).toEqual([]);
+    }
+    expect(fake.current.labels.map(({ name }) => name)).toContain('p:builder');
+    expect(fake.current.labels.map(({ name }) => name)).toContain('handoff');
   });
 });
 
