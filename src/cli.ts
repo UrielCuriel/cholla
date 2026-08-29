@@ -5,7 +5,15 @@ import { z } from 'zod';
 import { loadConfig, repositoryName } from './config.ts';
 import { bootstrapLabels, GithubClient } from './github.ts';
 import { initializeRepository } from './init.ts';
-import { accept, block, buildContext, claim, handoff, selectNext } from './work.ts';
+import {
+  accept,
+  acknowledgeHandoff,
+  block,
+  buildContext,
+  claim,
+  handoff,
+  selectNext,
+} from './work.ts';
 
 const repositoryRoot = () => option(z.string().default('.'), {
   description: 'Repository root (default: current directory)',
@@ -157,6 +165,23 @@ async function main(): Promise<void> {
         requiredAction: flags.action, blockingCondition: flags.blocking, evidence: flags.evidence,
         relatedWork: flags.related,
       }, config);
+    },
+  }));
+
+  cli.command(defineCommand({
+    name: 'handoff-ack',
+    description: 'Acknowledge a pending handoff as its receiving profile',
+    options: {
+      profile: profile(),
+      issue: issue(),
+      state: option(z.enum(['ready', 'blocked', 'needs-decision']), {
+        description: 'Persisted target state: ready, blocked, or needs-decision (required)',
+      }),
+      'repo-root': repositoryRoot(),
+    },
+    handler: async ({ flags }) => {
+      const { config, client } = await project(resolve(flags['repo-root']));
+      await acknowledgeHandoff(client, flags.issue, flags.profile, flags.state, config);
     },
   }));
 

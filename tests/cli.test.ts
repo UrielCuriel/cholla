@@ -20,6 +20,7 @@ describe('CLI help', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('cholla v0.1.0');
     expect(result.stdout).toContain('handoff');
+    expect(result.stdout).toContain('handoff-ack');
   });
 
   test.each([
@@ -44,5 +45,13 @@ describe('CLI help', () => {
     const result = await run('help', 'unknown');
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("Command 'unknown' not found");
+  });
+
+  test('documents the receiver-side handoff transition', async () => {
+    const result = await run('handoff-ack', '--help');
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('Usage: cholla handoff-ack [options]');
+    expect(result.stdout).toContain('Persisted target state');
   });
 });

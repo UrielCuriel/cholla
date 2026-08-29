@@ -54,9 +54,12 @@ cholla doctor
 cholla context --profile <profile>
 cholla next --profile <profile>
 cholla handoff --help
+cholla handoff-ack --profile <receiver> --issue <number> --state ready
 ```
 
 Every command supports `--help` (and `-h`) without requiring configuration or mandatory options. The equivalent `cholla help <command>` form is also available. For machine-readable command discovery, use Bunli's `--llms` or `--llms-full` manifest.
+
+`handoff` records a pending cross-profile transfer. The receiving profile acknowledges the latest structured handoff with `handoff-ack`, choosing the state already persisted on the issue: `ready`, `blocked`, or `needs-decision`. Acknowledgment preserves the original event, is safe to retry after partial GitHub mutations, and removes only `handoff:required`; it never promotes blocked or decision-pending work implicitly.
 
 ## Design
 

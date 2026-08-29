@@ -4,6 +4,7 @@ import { GithubClient, labelNames, readyForProfile } from './github.ts';
 
 const CLAIM_MARKER = '<!-- cholla:claim:v1 -->';
 const HANDOFF_MARKER = '<!-- cholla:handoff:v1 -->';
+const HANDOFF_ACK_MARKER = '<!-- cholla:handoff-ack:v1 -->';
 const ACCEPTANCE_MARKER = '<!-- cholla:acceptance:v1 -->';
 const BLOCKER_MARKER = '<!-- cholla:blocker:v1 -->';
 
@@ -89,6 +90,27 @@ function structuredComment(marker: string, fields: Record<string, unknown>): str
   return `${marker}\n\`\`\`json\n${json}\n\`\`\``;
 }
 
+function structuredFields(comment: string, marker: string): Record<string, unknown> | undefined {
+  if (!comment.startsWith(marker)) return undefined;
+  const fenced = comment.match(/```json\s*([\s\S]*?)\s*```/);
+  if (!fenced?.[1]) return undefined;
+  try {
+    const value = JSON.parse(fenced[1]);
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 export async function claim(
   client: GithubClient,
   number: number,
@@ -126,6 +148,76 @@ export async function handoff(
     config.github.labels.handoffRequired,
     `${config.github.labels.profilePrefix}${fields.to}`,
   ], profileLabels);
+}
+
+export type HandoffTargetState = 'ready' | 'blocked' | 'needs-decision';
+
+/**
+ * Acknowledge the latest structured handoff as its persisted receiver.
+ *
+ * The target state must already be present. This transition only records
+ * receiver consumption and removes handoff:required, so it cannot turn a
+ * blocked or decision-pending issue into executable work accidentally.
+ * Comment-first ordering makes a retry repair a partial label mutation.
+ */
+export async function acknowledgeHandoff(
+  client: GithubClient,
+  number: number,
+  profile: string,
+  targetState: HandoffTargetState,
+  config: ChollaConfig,
+): Promise<void> {
+  if (!config.profiles[profile]) throw new Error(`Unknown profile: ${profile}`);
+  const issue = await client.issue(number);
+  const labels = labelNames(issue);
+  const stateLabels: Record<HandoffTargetState, string> = {
+    ready: config.github.labels.ready,
+    blocked: config.github.labels.blocked,
+    'needs-decision': config.github.labels.needsDecision,
+  };
+  const expectedState = stateLabels[targetState];
+  if (!labels.includes(expectedState)) {
+    throw new Error(`Handoff target state ${targetState} is not present on issue #${number}`);
+  }
+
+  const handoffComment = [...(issue.comments ?? [])]
+    .reverse()
+    .find((comment) => comment.body.startsWith(HANDOFF_MARKER));
+  if (!handoffComment) throw new Error(`Issue #${number} has no structured handoff`);
+  const handoff = structuredFields(handoffComment.body, HANDOFF_MARKER);
+  if (!handoff || typeof handoff.to !== 'string') {
+    throw new Error(`Issue #${number} has an invalid structured handoff`);
+  }
+  if (handoff.to !== profile) {
+    throw new Error(`Handoff receiver is ${handoff.to}, not ${profile}`);
+  }
+
+  const handoffDigest = await sha256(handoffComment.body);
+  const acknowledgments = (issue.comments ?? [])
+    .map((comment) => structuredFields(comment.body, HANDOFF_ACK_MARKER))
+    .filter((fields): fields is Record<string, unknown> => fields !== undefined);
+  const alreadyAcknowledged = acknowledgments.some(
+    (fields) => fields.handoffDigest === handoffDigest && fields.profile === profile,
+  );
+
+  if (!labels.includes(config.github.labels.handoffRequired) && !alreadyAcknowledged) {
+    throw new Error(`Issue #${number} has no pending handoff to acknowledge`);
+  }
+
+  if (!alreadyAcknowledged) {
+    await client.comment(number, structuredComment(HANDOFF_ACK_MARKER, {
+      event: 'handoff-acknowledged',
+      eventId: crypto.randomUUID(),
+      handoffDigest,
+      profile,
+      targetState,
+      acknowledgedAt: new Date().toISOString(),
+    }));
+  }
+
+  if (labels.includes(config.github.labels.handoffRequired)) {
+    await client.editLabels(number, [], [config.github.labels.handoffRequired]);
+  }
 }
 
 export async function accept(
