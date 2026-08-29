@@ -112,6 +112,23 @@ async function sha256(value: string): Promise<string> {
     .join('');
 }
 
+export type WorkflowState = 'ready' | 'in-progress' | 'blocked' | 'needs-decision' | 'accepted';
+export type HandoffTargetState = 'ready' | 'blocked' | 'needs-decision';
+
+function workflowStateEntries(config: ChollaConfig): [WorkflowState, string][] {
+  return [
+    ['ready', config.github.labels.ready],
+    ['in-progress', config.github.labels.inProgress],
+    ['blocked', config.github.labels.blocked],
+    ['needs-decision', config.github.labels.needsDecision],
+    ['accepted', config.github.labels.accepted],
+  ];
+}
+
+function workflowStateLabels(config: ChollaConfig): string[] {
+  return workflowStateEntries(config).map(([, label]) => label);
+}
+
 export async function claim(
   client: GithubClient,
   number: number,
@@ -156,15 +173,13 @@ export async function handoff(
 
   const issue = await client.issue(number);
   const labels = labelNames(issue);
-  const stateLabels: Record<HandoffTargetState, string> = {
-    ready: config.github.labels.ready,
-    blocked: config.github.labels.blocked,
-    'needs-decision': config.github.labels.needsDecision,
-  };
-  const stateEntries = Object.entries(stateLabels) as [HandoffTargetState, string][];
+  const stateEntries = workflowStateEntries(config);
   const currentStates = stateEntries.filter(([, label]) => labels.includes(label)).map(([state]) => state);
   if (currentStates.length !== 1) {
-    throw new Error(`Issue #${number} must have exactly one workflow state before handoff`);
+    const resolved = currentStates.length ? currentStates.join(', ') : 'none';
+    throw new Error(
+      `Issue #${number} must have exactly one workflow state before handoff; resolved: ${resolved}`,
+    );
   }
   const currentState = currentStates[0]!;
   if (targetState && targetState !== currentState
@@ -203,17 +218,17 @@ export async function handoff(
   const remove = labels.filter(
     (label) => label.startsWith(config.github.labels.profilePrefix) && label !== receiverProfileLabel,
   );
-  if (targetState && targetState !== currentState) remove.push(stateLabels[currentState]);
+  if (targetState && targetState !== currentState) {
+    remove.push(stateEntries.find(([state]) => state === currentState)![1]);
+  }
   const add = [config.github.labels.handoffRequired, receiverProfileLabel];
-  if (targetState) add.push(stateLabels[targetState]);
+  if (targetState) add.push(stateEntries.find(([state]) => state === targetState)![1]);
   await client.editLabels(
     number,
     [...new Set(add)],
     [...new Set(remove)].filter((label) => !add.includes(label)),
   );
 }
-
-export type HandoffTargetState = 'ready' | 'blocked' | 'needs-decision';
 
 /**
  * Acknowledge the latest structured handoff as its persisted receiver.
@@ -227,18 +242,13 @@ export async function acknowledgeHandoff(
   client: GithubClient,
   number: number,
   profile: string,
-  targetState: HandoffTargetState,
+  targetState: WorkflowState,
   config: ChollaConfig,
 ): Promise<void> {
   if (!config.profiles[profile]) throw new Error(`Unknown profile: ${profile}`);
   const issue = await client.issue(number);
   const labels = labelNames(issue);
-  const stateLabels: Record<HandoffTargetState, string> = {
-    ready: config.github.labels.ready,
-    blocked: config.github.labels.blocked,
-    'needs-decision': config.github.labels.needsDecision,
-  };
-  const expectedState = stateLabels[targetState];
+  const expectedState = workflowStateEntries(config).find(([state]) => state === targetState)![1];
   if (!labels.includes(expectedState)) {
     throw new Error(`Handoff target state ${targetState} is not present on issue #${number}`);
   }
@@ -345,16 +355,6 @@ type UnblockFields = {
 type BlockerReference =
   | { blockerDigest: string; legacyBlocked?: never }
   | { blockerDigest?: never; legacyBlocked: true };
-
-function workflowStateLabels(config: ChollaConfig): string[] {
-  return [
-    config.github.labels.ready,
-    config.github.labels.inProgress,
-    config.github.labels.blocked,
-    config.github.labels.needsDecision,
-    config.github.labels.accepted,
-  ];
-}
 
 function assertUnblockIssue(
   issue: Issue,

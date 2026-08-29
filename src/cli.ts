@@ -177,8 +177,8 @@ async function main(): Promise<void> {
     options: {
       profile: profile(),
       issue: issue(),
-      state: option(z.enum(['ready', 'blocked', 'needs-decision']), {
-        description: 'Persisted target state: ready, blocked, or needs-decision (required)',
+      state: option(z.enum(['ready', 'in-progress', 'blocked', 'needs-decision', 'accepted']), {
+        description: 'Persisted workflow state (required)',
       }),
       'repo-root': repositoryRoot(),
     },

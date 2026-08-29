@@ -54,7 +54,7 @@ describe('CLI help', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('Usage: cholla handoff-ack [options]');
-    expect(result.stdout).toContain('Persisted target state');
+    expect(result.stdout).toContain('Persisted workflow state');
   });
 
   test.each([

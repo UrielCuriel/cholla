@@ -121,6 +121,28 @@ describe('leases', () => {
 });
 
 describe('handoff projection', () => {
+  test('hands active work to independent acceptance without changing its state', async () => {
+    const fake = authorizedHandoffClient();
+    fake.current = issue(['s:doing', 'p:builder', 'priority:P1']);
+
+    await handoff(fake as unknown as GithubClient, 1, handoffFields('quality'), config);
+
+    expect(fake.comments[0]).toContain('cholla:handoff:v1');
+    expect(fake.edits).toEqual([{
+      add: ['handoff', 'p:quality'],
+      remove: ['p:builder'],
+    }]);
+    expect(fake.current.labels.map(({ name }) => name)).toContain('s:doing');
+  });
+
+  test('reports the concrete workflow states when a handoff is ambiguous', async () => {
+    const fake = authorizedHandoffClient();
+    fake.current = issue(['s:doing', 's:blocked', 'p:builder']);
+
+    await expect(handoff(fake as unknown as GithubClient, 1, handoffFields(), config))
+      .rejects.toThrow('resolved: in-progress, blocked');
+  });
+
   test('promotes an authorized needs-decision handoff to ready', async () => {
     const fake = authorizedHandoffClient();
     fake.current = issue(['s:decision', 'p:builder', 'priority:P1']);
@@ -224,6 +246,22 @@ describe('handoff projection', () => {
 });
 
 describe('handoff acknowledgment', () => {
+  test('acknowledges active work received for independent acceptance', async () => {
+    const fake = new FakeClient();
+    const original = handoffBody('quality');
+    fake.current = issue(['s:doing', 'p:quality', 'handoff', 'priority:P1']);
+    fake.current.comments = [{ body: original, createdAt: new Date().toISOString(), author: null }];
+
+    await acknowledgeHandoff(
+      fake as unknown as GithubClient, 1, 'quality', 'in-progress', config,
+    );
+
+    expect(fake.comments[0]).toContain('handoff-acknowledged');
+    expect(fake.comments[0]).toContain('"targetState": "in-progress"');
+    expect(fake.edits).toEqual([{ add: [], remove: ['handoff'] }]);
+    expect(fake.current.labels.map(({ name }) => name)).toContain('s:doing');
+  });
+
   test('moves a valid ready handoff into eligible work without altering its event', async () => {
     const fake = new FakeClient();
     const original = handoffBody();
