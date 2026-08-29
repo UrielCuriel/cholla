@@ -53,7 +53,10 @@ Use `--dry-run` to preview installation. Existing Cholla-managed files with loca
 cholla doctor
 cholla context --profile <profile>
 cholla next --profile <profile>
+cholla handoff --help
 ```
+
+Every command supports `--help` (and `-h`) without requiring configuration or mandatory options. The equivalent `cholla help <command>` form is also available. For machine-readable command discovery, use Bunli's `--llms` or `--llms-full` manifest.
 
 ## Design
 
