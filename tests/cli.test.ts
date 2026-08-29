@@ -21,6 +21,7 @@ describe('CLI help', () => {
     expect(result.stdout).toContain('cholla v0.1.0');
     expect(result.stdout).toContain('handoff');
     expect(result.stdout).toContain('handoff-ack');
+    expect(result.stdout).toContain('unblock');
   });
 
   test.each([
@@ -53,5 +54,17 @@ describe('CLI help', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('Usage: cholla handoff-ack [options]');
     expect(result.stdout).toContain('Persisted target state');
+  });
+
+  test.each([
+    { args: ['unblock', '--help'] },
+    { args: ['help', 'unblock'] },
+  ])('documents unblock without loading repository configuration: %p', async ({ args }) => {
+    const result = await run(...args);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('Usage: cholla unblock [options]');
+    expect(result.stdout).toContain('Blocker resolution (required)');
+    expect(result.stdout).toContain('Supporting evidence (required)');
   });
 });

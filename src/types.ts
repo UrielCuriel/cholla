@@ -50,6 +50,7 @@ export type ChollaConfig = {
 
 export type Issue = {
   number: number;
+  state: 'OPEN' | 'CLOSED';
   title: string;
   url: string;
   body: string;
