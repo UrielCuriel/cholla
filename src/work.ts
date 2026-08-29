@@ -32,7 +32,7 @@ export async function buildContext(
   if (!profile) throw new Error(`Unknown profile: ${profileId}`);
   const milestone = await client.activeMilestone(config.github.activeMilestoneMarker);
   const milestoneIssues = await client.issues(milestone.title);
-  const issues = selectNext(milestoneIssues, profileId, config);
+  const issues = selectNext(await client.issues(), profileId, config);
   const profileLabel = `${config.github.labels.profilePrefix}${profileId}`;
   const active = milestoneIssues.filter((issue) => {
     const labels = labelNames(issue);
@@ -137,20 +137,80 @@ export async function handoff(
   number: number,
   fields: Record<string, string>,
   config: ChollaConfig,
+  targetState?: HandoffTargetState,
 ): Promise<void> {
   const required = ['from', 'to', 'type', 'context', 'impact', 'requiredAction', 'blockingCondition', 'evidence', 'relatedWork'];
   const absent = required.filter((key) => !fields[key]?.trim());
   if (absent.length) throw new Error(`Missing handoff fields: ${absent.join(', ')}`);
-  await client.comment(number, structuredComment(HANDOFF_MARKER, fields));
+  const sender = config.profiles[fields.from!];
+  if (!sender) throw new Error(`Unknown profile: ${fields.from}`);
+  if (!config.profiles[fields.to!]) throw new Error(`Unknown profile: ${fields.to}`);
+  const actor = await client.currentActor();
+  const authorizedByUser = sender.githubActors.users.includes(actor);
+  const authorizedByTeam = !authorizedByUser && await Promise.all(
+    sender.githubActors.teams.map((team) => client.isTeamMember(team, actor)),
+  ).then((memberships) => memberships.some(Boolean));
+  if (!authorizedByUser && !authorizedByTeam) {
+    throw new Error(`GitHub actor ${actor} is not authorized for profile ${fields.from}`);
+  }
+
   const issue = await client.issue(number);
+  const labels = labelNames(issue);
+  const stateLabels: Record<HandoffTargetState, string> = {
+    ready: config.github.labels.ready,
+    blocked: config.github.labels.blocked,
+    'needs-decision': config.github.labels.needsDecision,
+  };
+  const stateEntries = Object.entries(stateLabels) as [HandoffTargetState, string][];
+  const currentStates = stateEntries.filter(([, label]) => labels.includes(label)).map(([state]) => state);
+  if (currentStates.length !== 1) {
+    throw new Error(`Issue #${number} must have exactly one workflow state before handoff`);
+  }
+  const currentState = currentStates[0]!;
+  if (targetState && targetState !== currentState
+    && !(currentState === 'needs-decision' && targetState === 'ready')) {
+    throw new Error(`Unsupported handoff state transition: ${currentState} -> ${targetState}`);
+  }
+
+  const eventFields = targetState ? { ...fields, targetState } : fields;
+  const latestHandoff = [...(issue.comments ?? [])].reverse().find(
+    (comment) => comment.body.startsWith(HANDOFF_MARKER),
+  );
+  const matchingHandoff = latestHandoff && (() => {
+    const persisted = structuredFields(latestHandoff.body, HANDOFF_MARKER);
+    return persisted && Object.entries(eventFields).every(([key, value]) => persisted[key] === value)
+      ? latestHandoff
+      : undefined;
+  })();
+  let matchingPendingHandoff = false;
+  if (matchingHandoff) {
+    const digest = await sha256(matchingHandoff.body);
+    matchingPendingHandoff = !(issue.comments ?? []).some((comment) => {
+      const acknowledgment = structuredFields(comment.body, HANDOFF_ACK_MARKER);
+      return acknowledgment?.handoffDigest === digest;
+    });
+  }
+  if (!matchingPendingHandoff) {
+    await client.comment(number, structuredComment(HANDOFF_MARKER, {
+      ...eventFields,
+      event: 'handoff-recorded',
+      eventId: crypto.randomUUID(),
+      handedOffAt: new Date().toISOString(),
+    }));
+  }
+
   const receiverProfileLabel = `${config.github.labels.profilePrefix}${fields.to}`;
-  const staleProfileLabels = labelNames(issue).filter(
+  const remove = labels.filter(
     (label) => label.startsWith(config.github.labels.profilePrefix) && label !== receiverProfileLabel,
   );
-  await client.editLabels(number, [
-    config.github.labels.handoffRequired,
-    receiverProfileLabel,
-  ], staleProfileLabels);
+  if (targetState && targetState !== currentState) remove.push(stateLabels[currentState]);
+  const add = [config.github.labels.handoffRequired, receiverProfileLabel];
+  if (targetState) add.push(stateLabels[targetState]);
+  await client.editLabels(
+    number,
+    [...new Set(add)],
+    [...new Set(remove)].filter((label) => !add.includes(label)),
+  );
 }
 
 export type HandoffTargetState = 'ready' | 'blocked' | 'needs-decision';

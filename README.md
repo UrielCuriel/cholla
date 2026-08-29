@@ -54,12 +54,15 @@ cholla doctor
 cholla context --profile <profile>
 cholla next --profile <profile>
 cholla handoff --help
+cholla handoff --profile <sender> --issue <number> --to <receiver> --state ready # plus evidence fields
 cholla handoff-ack --profile <receiver> --issue <number> --state ready
 ```
 
 Every command supports `--help` (and `-h`) without requiring configuration or mandatory options. The equivalent `cholla help <command>` form is also available. For machine-readable command discovery, use Bunli's `--llms` or `--llms-full` manifest.
 
-`handoff` records a pending cross-profile transfer. The receiving profile acknowledges the latest structured handoff with `handoff-ack`, choosing the state already persisted on the issue: `ready`, `blocked`, or `needs-decision`. Acknowledgment preserves the original event, is safe to retry after partial GitHub mutations, and removes only `handoff:required`; it never promotes blocked or decision-pending work implicitly.
+`handoff` records a pending cross-profile transfer. An authorized sender may pass `--state ready` to persist and project the explicit `needs-decision` to `ready` transition; retries reuse the unacknowledged event and repair its labels. The receiving profile acknowledges the latest structured handoff with `handoff-ack`, choosing the state already persisted on the issue: `ready`, `blocked`, or `needs-decision`. Acknowledgment preserves the original event, is safe to retry after partial GitHub mutations, and removes only `handoff:required`; it never promotes blocked or decision-pending work implicitly.
+
+`context` and `next` discover eligible open work across the repository, including work intentionally outside the active product milestone. The milestone remains the scope for active responsibilities and pending handoffs shown by `context`.
 
 ## Design
 

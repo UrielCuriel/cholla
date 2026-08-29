@@ -14,6 +14,7 @@ import { config, issue } from './fixtures.ts';
 
 class FakeClient {
   current = issue();
+  allIssues?: ReturnType<typeof issue>[];
   comments: string[] = [];
   edits: { add: string[]; remove: string[] }[] = [];
   actor = 'quality';
@@ -22,7 +23,9 @@ class FakeClient {
   async activeMilestone(): Promise<{ number: number; title: string; state: string }> {
     return { number: 1, title: 'M1', state: 'open' };
   }
-  async issues(): Promise<ReturnType<typeof issue>[]> { return [this.current]; }
+  async issues(milestone?: string): Promise<ReturnType<typeof issue>[]> {
+    return milestone ? [this.current] : (this.allIssues ?? [this.current]);
+  }
   async comment(_number: number, body: string): Promise<void> { this.comments.push(body); }
   async currentActor(): Promise<string> { return this.actor; }
   async editLabels(_number: number, add: string[], remove: string[]): Promise<void> {
@@ -61,6 +64,19 @@ describe('eligibility', () => {
       expect(selectNext([issue(['s:ready', 'p:builder', state])], 'builder', config)).toEqual([]);
     },
   );
+
+  test('includes eligible work outside the active milestone in context', async () => {
+    const fake = new FakeClient();
+    const outside = { ...issue(), number: 2, milestone: null };
+    fake.allIssues = [fake.current, outside];
+
+    const context = await buildContext(
+      resolve(import.meta.dir, '..'), 'builder', config, fake as unknown as GithubClient,
+    );
+
+    expect(context).toContain('Active milestone: M1');
+    expect(context).toContain('#2 Work');
+  });
 });
 
 describe('leases', () => {
@@ -74,6 +90,53 @@ describe('leases', () => {
 });
 
 describe('handoff projection', () => {
+  test('promotes an authorized needs-decision handoff to ready', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:decision', 'p:builder', 'priority:P1']);
+
+    await handoff(fake as unknown as GithubClient, 1, handoffFields(), config, 'ready');
+
+    expect(fake.comments[0]).toContain('"targetState": "ready"');
+    expect(fake.edits).toEqual([{
+      add: ['handoff', 'p:builder', 's:ready'],
+      remove: ['s:decision'],
+    }]);
+  });
+
+  test('rejects an unauthorized sender without mutation', async () => {
+    const fake = new FakeClient();
+    fake.actor = 'intruder';
+    await expect(handoff(fake as unknown as GithubClient, 1, handoffFields(), config, 'ready'))
+      .rejects.toThrow('is not authorized for profile quality');
+    expect(fake.comments).toEqual([]);
+    expect(fake.edits).toEqual([]);
+  });
+
+  test('rejects unsupported state transitions without mutation', async () => {
+    const fake = new FakeClient();
+    await expect(handoff(fake as unknown as GithubClient, 1, handoffFields(), config, 'blocked'))
+      .rejects.toThrow('Unsupported handoff state transition: ready -> blocked');
+    expect(fake.comments).toEqual([]);
+    expect(fake.edits).toEqual([]);
+  });
+
+  test('reuses the pending event while repairing a failed state projection', async () => {
+    const fake = new FakeClient();
+    fake.current = issue(['s:decision', 'p:builder']);
+    fake.failNextEdit = true;
+    await expect(handoff(fake as unknown as GithubClient, 1, handoffFields(), config, 'ready'))
+      .rejects.toThrow('partial GitHub mutation');
+    fake.current.comments!.push({
+      body: fake.comments[0]!, createdAt: new Date().toISOString(), author: { login: 'quality' },
+    });
+
+    await handoff(fake as unknown as GithubClient, 1, handoffFields(), config, 'ready');
+
+    expect(fake.comments).toHaveLength(1);
+    expect(fake.current.labels.map(({ name }) => name)).toContain('s:ready');
+    expect(fake.current.labels.map(({ name }) => name)).not.toContain('s:decision');
+  });
+
   test('preserves an existing receiver with disjoint label mutations', async () => {
     const fake = new FakeClient();
     fake.current = issue(['s:ready', 'p:builder', 'priority:P1']);
