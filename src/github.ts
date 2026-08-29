@@ -38,17 +38,7 @@ export class GithubClient {
 
   async actorInAnyTeam(actor: string, teams: string[]): Promise<boolean> {
     for (const team of teams) {
-      const [organization, slug, ...rest] = team.split('/');
-      if (!organization || !slug || rest.length) continue;
-      try {
-        const state = await this.runner.run([
-          'gh', 'api', `orgs/${organization}/teams/${slug}/memberships/${actor}`, '--jq', '.state',
-        ]);
-        if (state.trim() === 'active') return true;
-      } catch {
-        // A missing/inaccessible membership is not authority; try the next
-        // repository-declared team and otherwise fail closed.
-      }
+      if (await this.isTeamMember(team, actor)) return true;
     }
     return false;
   }
@@ -69,11 +59,11 @@ export class GithubClient {
     );
   }
 
-  async issues(milestone: string): Promise<Issue[]> {
-    const output = await this.gh([
-      'issue', 'list', '--state', 'open', '--milestone', milestone, '--limit', '200',
-      '--json', 'number,state,title,url,body,labels,assignees,milestone,updatedAt',
-    ]);
+  async issues(milestone?: string): Promise<Issue[]> {
+    const args = ['issue', 'list', '--state', 'open', '--limit', '200',
+      '--json', 'number,state,title,url,body,labels,assignees,milestone,updatedAt'];
+    if (milestone) args.push('--milestone', milestone);
+    const output = await this.gh(args);
     return JSON.parse(output) as Issue[];
   }
 
@@ -98,6 +88,19 @@ export class GithubClient {
 
   async assignSelf(number: number): Promise<void> {
     await this.gh(['issue', 'edit', String(number), '--add-assignee', '@me']);
+  }
+
+  async isTeamMember(team: string, actor: string): Promise<boolean> {
+    const [owner, slug, ...rest] = team.split('/');
+    if (!owner || !slug || rest.length) return false;
+    try {
+      const output = await this.runner.run([
+        'gh', 'api', `orgs/${owner}/teams/${slug}/memberships/${actor}`, '--jq', '.state',
+      ]);
+      return output.trim() === 'active';
+    } catch {
+      return false;
+    }
   }
 
   async ensureLabel(name: string, color: string, description: string): Promise<void> {

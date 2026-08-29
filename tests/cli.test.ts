@@ -39,6 +39,7 @@ describe('CLI help', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('Usage: cholla handoff [options]');
     expect(result.stdout).toContain('Related work (required)');
+    expect(result.stdout).toContain('Optional target state');
     expect(result.stdout).not.toContain('Missing --');
   });
 

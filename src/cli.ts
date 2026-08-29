@@ -133,8 +133,7 @@ async function main(): Promise<void> {
     options: { profile: profile(), 'repo-root': repositoryRoot() },
     handler: async ({ flags }) => {
       const { config, client } = await project(resolve(flags['repo-root']));
-      const milestone = await client.activeMilestone(config.github.activeMilestoneMarker);
-      const issues = selectNext(await client.issues(milestone.title), flags.profile, config);
+      const issues = selectNext(await client.issues(), flags.profile, config);
       console.log(issues.length ? JSON.stringify(issues, null, 2) : 'No eligible work');
     },
   }));
@@ -157,6 +156,9 @@ async function main(): Promise<void> {
       profile: profile(), issue: issue(), to: text('Receiving profile'), type: text('Handoff type'),
       context: text('Relevant context'), impact: text('Impact of the handoff'), action: text('Required action'),
       blocking: text('Blocking condition'), evidence: text('Supporting evidence'), related: text('Related work'),
+      state: option(z.enum(['ready', 'blocked', 'needs-decision']).optional(), {
+        description: 'Optional target state; supports needs-decision to ready',
+      }),
       'repo-root': repositoryRoot(),
     },
     handler: async ({ flags }) => {
@@ -165,7 +167,7 @@ async function main(): Promise<void> {
         from: flags.profile, to: flags.to, type: flags.type, context: flags.context, impact: flags.impact,
         requiredAction: flags.action, blockingCondition: flags.blocking, evidence: flags.evidence,
         relatedWork: flags.related,
-      }, config);
+      }, config, flags.state);
     },
   }));
 
