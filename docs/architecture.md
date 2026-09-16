@@ -33,6 +33,7 @@ The resolver returns a traceable context bundle, not a copied knowledge warehous
 - Normative decisions link to versioned ADR/design artifacts.
 - Session output needed later has a persistent destination.
 - Product secrets never enter configuration, prompts, comments or telemetry.
+- Cholla product work is planned and accepted in `UrielCuriel/cholla`; consumer repositories retain only their product and bounded adoption work.
 
 ## Non-goals
 

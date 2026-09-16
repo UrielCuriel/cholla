@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "name": "cholla",
+    "repository": "UrielCuriel/cholla"
+  },
+  "knowledge": {
+    "layers": [
+      {
+        "id": "product",
+        "purpose": "Product identity, North Star, and outcomes",
+        "paths": [
+          "README.md"
+        ],
+        "required": true
+      },
+      {
+        "id": "architecture",
+        "purpose": "Control-plane architecture, project contract, lifecycle protocol, and decisions",
+        "paths": [
+          "docs/architecture.md",
+          "docs/project-contract.md",
+          "docs/github-control-plane.md",
+          "docs/adr/README.md"
+        ],
+        "required": true
+      },
+      {
+        "id": "operations",
+        "purpose": "Agent execution, rollout, repository ownership, and migration boundaries",
+        "paths": [
+          "docs/agent-model.md",
+          "docs/rollout.md",
+          "docs/adr/0001-cholla-work-lives-in-cholla.md"
+        ],
+        "required": true
+      }
+    ]
+  },
+  "profiles": {
+    "product-owner": {
+      "githubActors": {
+        "users": [
+          "UrielCuriel"
+        ],
+        "teams": []
+      },
+      "authority": [
+        "Cholla outcomes, roadmap, repository boundary, priorities, and acceptance criteria"
+      ],
+      "responsibilities": [
+        "Keep Cholla product work in UrielCuriel/cholla and consumer adoption work in the consumer repository"
+      ],
+      "exclusions": [
+        "Do not silently change product scope, shared contracts, or architectural invariants"
+      ],
+      "areas": [
+        "product",
+        "planning"
+      ],
+      "knowledge": [
+        "product",
+        "architecture",
+        "operations"
+      ],
+      "instructions": [
+        ".cholla/profiles/product-owner.md"
+      ]
+    },
+    "architect": {
+      "githubActors": {
+        "users": [
+          "UrielCuriel"
+        ],
+        "teams": []
+      },
+      "authority": [
+        "Cholla control-plane boundaries, lifecycle protocols, invariants, and ADRs"
+      ],
+      "responsibilities": [
+        "Specify versioned, product-agnostic contracts before cross-cutting implementation"
+      ],
+      "exclusions": [
+        "Do not silently change product scope, shared contracts, or architectural invariants"
+      ],
+      "areas": [
+        "architecture",
+        "protocol"
+      ],
+      "knowledge": [
+        "product",
+        "architecture",
+        "operations"
+      ],
+      "instructions": [
+        ".cholla/profiles/architect.md"
+      ]
+    },
+    "knowledge-curator": {
+      "githubActors": {
+        "users": [
+          "UrielCuriel"
+        ],
+        "teams": []
+      },
+      "authority": [
+        "Cholla documentation topology, ADR index, cross-repository links, and migration inventory"
+      ],
+      "responsibilities": [
+        "Keep normative Cholla knowledge discoverable without importing consumer product facts"
+      ],
+      "exclusions": [
+        "Do not silently change product scope, shared contracts, or architectural invariants"
+      ],
+      "areas": [
+        "knowledge"
+      ],
+      "knowledge": [
+        "product",
+        "architecture",
+        "operations"
+      ],
+      "instructions": [
+        ".cholla/profiles/knowledge-curator.md"
+      ]
+    },
+    "compiler-engineer": {
+      "githubActors": {
+        "users": [
+          "UrielCuriel"
+        ],
+        "teams": []
+      },
+      "authority": [
+        "Project-contract validation, configuration parsing, and managed artifact generation"
+      ],
+      "responsibilities": [
+        "Maintain deterministic initialization and schema-compatible project contracts"
+      ],
+      "exclusions": [
+        "Do not silently change product scope, shared contracts, or architectural invariants"
+      ],
+      "areas": [
+        "configuration",
+        "bootstrap"
+      ],
+      "knowledge": [
+        "product",
+        "architecture",
+        "operations"
+      ],
+      "instructions": [
+        ".cholla/profiles/compiler-engineer.md"
+      ]
+    },
+    "runtime-engineer": {
+      "githubActors": {
+        "users": [
+          "UrielCuriel"
+        ],
+        "teams": []
+      },
+      "authority": [
+        "Lifecycle kernel, coordinator, versioned events, leases, and reconciliation"
+      ],
+      "responsibilities": [
+        "Implement fail-closed, idempotent lifecycle transitions and shared state derivation"
+      ],
+      "exclusions": [
+        "Do not silently change product scope, shared contracts, or architectural invariants"
+      ],
+      "areas": [
+        "runtime",
+        "protocol",
+        "github"
+      ],
+      "knowledge": [
+        "product",
+        "architecture",
+        "operations"
+      ],
+      "instructions": [
+        ".cholla/profiles/runtime-engineer.md"
+      ]
+    },
+    "projection-engineer": {
+      "githubActors": {
+        "users": [
+          "UrielCuriel"
+        ],
+        "teams": []
+      },
+      "authority": [
+        "GitHub projections, work discovery, operator-facing CLI output, and adapter behavior"
+      ],
+      "responsibilities": [
+        "Keep repairable GitHub projections and CLI views consistent with authoritative events"
+      ],
+      "exclusions": [
+        "Do not silently change product scope, shared contracts, or architectural invariants"
+      ],
+      "areas": [
+        "github",
+        "cli"
+      ],
+      "knowledge": [
+        "product",
+        "architecture",
+        "operations"
+      ],
+      "instructions": [
+        ".cholla/profiles/projection-engineer.md"
+      ]
+    },
+    "quality-engineer": {
+      "githubActors": {
+        "users": [
+          "UrielCuriel"
+        ],
+        "teams": []
+      },
+      "authority": [
+        "Independent acceptance of Cholla contracts, code, workflows, and dogfood evidence"
+      ],
+      "responsibilities": [
+        "Verify exact commits and reproducible lifecycle evidence independently"
+      ],
+      "exclusions": [
+        "Do not silently change product scope, shared contracts, or architectural invariants"
+      ],
+      "areas": [
+        "quality",
+        "integration"
+      ],
+      "knowledge": [
+        "product",
+        "architecture",
+        "operations"
+      ],
+      "instructions": [
+        ".cholla/profiles/quality-engineer.md"
+      ]
+    }
+  },
+  "github": {
+    "repository": "UrielCuriel/cholla",
+    "activeMilestoneMarker": "<!-- cholla:active-milestone -->",
+    "taxonomy": {
+      "types": [
+        "initiative",
+        "feature",
+        "task",
+        "spike",
+        "architecture",
+        "integration",
+        "quality",
+        "operations"
+      ],
+      "priorities": [
+        "P0",
+        "P1",
+        "P2"
+      ]
+    },
+    "labels": {
+      "ready": "status:ready",
+      "inProgress": "status:in-progress",
+      "blocked": "status:blocked",
+      "needsDecision": "status:needs-decision",
+      "handoffRequired": "handoff:required",
+      "humanRequired": "human:required",
+      "accepted": "status:accepted",
+      "profilePrefix": "profile:",
+      "areaPrefix": "area:",
+      "typePrefix": "type:",
+      "priorityPrefix": "priority:"
+    }
+  },
+  "policy": {
+    "acceptanceProfile": "quality-engineer",
+    "requireIndependentAcceptance": true,
+    "requireDistinctActor": false,
+    "claimTtlHours": 24
+  }
+}
