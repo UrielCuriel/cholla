@@ -80,3 +80,4 @@ must be acknowledged in its blocked state before it can be unblocked.
 - [`docs/agent-model.md`](docs/agent-model.md)
 - [`docs/github-control-plane.md`](docs/github-control-plane.md)
 - [`docs/rollout.md`](docs/rollout.md)
+- [`docs/adr/README.md`](docs/adr/README.md)

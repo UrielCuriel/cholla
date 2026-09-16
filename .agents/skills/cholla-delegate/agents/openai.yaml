@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cholla Delegate"
+  short_description: "Delega subtareas acotadas a subagentes"
+  default_prompt: "Divide esta responsabilidad en delegaciones seguras para subagentes."

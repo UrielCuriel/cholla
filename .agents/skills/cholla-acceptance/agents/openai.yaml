@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cholla Acceptance"
+  short_description: "Verifica acceptance de forma independiente"
+  default_prompt: "Verifica esta responsabilidad de forma independiente y registra evidencia."

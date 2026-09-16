@@ -1,0 +1,21 @@
+name: Decision
+description: Request a product, architecture, security, or human decision
+title: "[Decision] "
+labels: ["status:needs-decision", "decision:required"]
+body:
+  - type: textarea
+    id: context
+    attributes: { label: Context }
+    validations: { required: true }
+  - type: textarea
+    id: decision
+    attributes: { label: Decision required }
+    validations: { required: true }
+  - type: textarea
+    id: alternatives
+    attributes: { label: Alternatives and trade-offs }
+    validations: { required: true }
+  - type: textarea
+    id: recommendation
+    attributes: { label: Recommendation }
+    validations: { required: true }

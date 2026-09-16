@@ -32,3 +32,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+<!-- CHOLLA_START -->
+.cholla/local/
+.env.cholla
+<!-- CHOLLA_END -->

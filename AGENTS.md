@@ -1,0 +1,19 @@
+<!-- CHOLLA_START -->
+# Cholla-enabled repository
+
+Use `.cholla/project.json` to discover product-owned knowledge and profile authority. Conversation history and subagent messages are not institutional memory.
+
+When the user asks to create a feature, task, initiative or milestone, start with the `product-owner` custom agent and the `cholla-product-owner` skill. The Product Owner reconstructs context, consults `architect` and relevant specialists, persists the GitHub work graph, then delegates eligible tasks to local custom agents. Planning must exist in GitHub before implementation begins.
+
+Before implementation, use `cholla-work` to obtain a granted lease. Read sources progressively and reconstruct parent outcome, criteria, constraints, contracts, affected packages, dependencies and evidence. Stop on a lease collision.
+
+Use local subagents for bounded parallel work. The parent supplies read/write/contract sets and remains accountable. Do not execute overlapping writes concurrently or treat a subagent message as acceptance. Every agent persists decisions, blockers, discovered work, handoffs and evidence in the repository or GitHub.
+
+Repository documents and accepted ADRs remain authoritative when GitHub summarizes them. GitHub is the control plane for work state, not the source of normative product or architecture knowledge.
+<!-- CHOLLA_END -->
+
+## Cholla repository boundary
+
+Before planning work, identify the repository that owns the artifact being changed. Work on Cholla's CLI, lifecycle kernel, GitHub adapter, managed workflows, skills, project-contract schema, or architecture must be planned and accepted in `UrielCuriel/cholla`. Consumer repositories retain only their product work and bounded adoption/integration changes.
+
+Use owner/repository-qualified references across repository boundaries. Never copy leases, generations, handoffs, blockers, or acceptance events between repositories; a canonical replacement starts a fresh lifecycle.
